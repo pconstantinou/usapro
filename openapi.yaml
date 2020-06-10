@@ -1,7 +1,7 @@
 openapi: 3.0.0
 info:
   title: Profusa Multi-Analyte Client API
-  description: The server provides persistence and data summarization for clients
+  description: The server provides persistence for oxygen and glucose clients
   version: 0.0.1
   contact: 
     name: Phil Constantinou
@@ -32,7 +32,7 @@ tags:
     description: stores an retries annotations on the time series data
 
 paths:
-  /buildNumber:
+  /build-number:
     get:
       tags: [system]
       description: Build Number provides an accessible build information so clients can capture the specific version of the cloud software.
