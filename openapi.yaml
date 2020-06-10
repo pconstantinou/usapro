@@ -43,14 +43,18 @@ paths:
           content:
             application/json:
               schema:
+                description: Returns the current build information of the server
                 type: object 
                 properties:
                   version:
                     type: string
+                    description: Version displays the git hash of the build
                   branch:
                     type: string
+                    description: Branch includes the branch from which the build was published
                   buildInfo:
                     type: object
+                    description: BuildInfo provides Go's internal representation of the deployed software
   /apple-app-site-association:
     get:
       tags: [system]
@@ -118,6 +122,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CheckVersionError'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
                   
 
   /subjects:
@@ -764,6 +774,7 @@ components:
 
 
     OxygenMeasurementResult:
+      description: OxygenMeasurementResult includes all the measurement data as well as information about the reader
       allOf:
         - $ref: '#/components/schemas/OxygenReaderMeasurement'
         - type: object
