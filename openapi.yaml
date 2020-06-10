@@ -1075,18 +1075,19 @@ components:
           type: string
           example: v0.0.1(20)
           pattern: '^v\d+\.?\d+\.?\d+\(\d+\)$'
-          description: The application version number of the reader
+          description: The application version number including the marketing version and the 
+            build number in the form v{marketing-version}({buildNumber})
         os-version:
           type: string
           example: iOS v13.1.4
-          description: The mobile os version number 
+          description: The mobile os version number including the platform OS (eg. iOS, iPadOS) and operating system
           pattern: '^\w+ v\d+\.?\d+\.?\d+$'
         created-timestamp:
           type: string
           format: date-time
           example: '2019-09-16T15:28:09Z'
           description: The timestamp of when the reader was first connected to the mobile device
-      required: [hardware-version, app-version, firmware-version, serial-number, created-timestamp]
+      required: [hardware-version, app-version, os-version, firmware-version, serial-number, created-timestamp]
 
     ReaderReference:
       description: ReaderReference represents a hardware/software pairing of data
