@@ -1,0 +1,1347 @@
+openapi: 3.0.0
+info:
+  title: Profusa Multi-Analyte Client API
+  description: The server provides persistence for oxygen and glucose clients
+  version: 0.0.1
+  contact: 
+    name: Phil Constantinou
+    email: phil.constantinou@profusa.com
+    url: http://profusa.com
+  x-logo:
+      url: 'http://b1d.820.myftpupload.com/wp-content/uploads/2015/12/logo-profusa.png'    
+
+servers:
+   - url: http://localhost:8080
+     description: localtesting 
+   - url: https://pre-prod.profusa.com/
+     description: Amazon hosted pre-production web app server. This version has the most stable APIs
+   - url: https://auth-test.profusa.com
+     description: Amazon hosted web server test server
+
+
+tags:
+  - name: system
+    description: manages system interfaces of the service
+  - name: subjects
+    description: manages subjects who have measurements
+  - name: readers
+    description: manages reader states
+  - name: measurements
+    description: stores and retrieves measurements from a subject
+  - name: annotations
+    description: stores an retries annotations on the time series data
+
+paths:
+  /build-number:
+    get:
+      tags: [system]
+      description: Build Number provides an accessible build information so clients can capture the specific version of the cloud software.
+      operationId: BuildNumber
+      responses:
+        '200':
+          description: Provides the build reference information
+          content:
+            application/json:
+              schema:
+                description: Returns the current build information of the server
+                type: object 
+                properties:
+                  version:
+                    type: string
+                    description: Version displays the git hash of the build
+                    example: 42b8c3f97f751889a2ee993c71d42cf3002c2587
+                  branch:
+                    type: string
+                    description: Branch includes the branch from which the build was published
+                    example: test/check-version-tests
+                  buildInfo:
+                    type: object
+                    description: BuildInfo provides Go's internal representation of the deployed software
+                    example: (devel)
+  /apple-app-site-association:
+    get:
+      tags: [system]
+      description: Apple App Site Association provides information to the iOS and web clients to associate a web service and application with the same username and password. It is used for on-device password managers.
+      operationId: SiteAssociation
+      responses:
+        '200':
+          description: Provides Apples App  Site Association
+          content:
+            application/json:
+              schema:
+                type: object 
+
+  /check-version/{client_api}/{app_bundle_id}/{app_version}/{app_build_number}/{os_version}:
+    get:
+      tags: [system]
+      operationId: CheckVersion
+      description: Check Version provides an authenticated API to determine if the client is supported by the cloud. If the client is not supported, a recommended action is returned
+      parameters:
+        - name: app_bundle_id
+          in: path
+          required: true
+          description: Application identifier as indicated by the app bundle ID
+          example: com.profusa.oxygen.data.collection
+          schema:
+            type: string
+        - name: app_version
+          in: path
+          required: true
+          description: Marketing version number
+          example: 0.1
+          schema:
+            type: string
+        - name: os_version
+          in: path
+          required: true
+          description: Marketing version number
+          example: 1.1.2
+          schema:
+            type: string
+        - name: app_build_number
+          in: path
+          required: true
+          example: 10
+          description: An build number of the software associated with the bundle
+          schema:
+            type: string
+        - name: client_api
+          in: path
+          required: true
+          example: 1
+          description: The version number of the client API you are using
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Client version is not supported, or partially supported. The user should be notified to update
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckVersionError'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+                  
+
+  /subjects:
+    get:
+      security:
+      - bearerAuth: []
+      operationId: getSubject
+      tags: [subjects]
+      description: Gets the subject associated with the authenticated user
+      responses:
+        '200':
+          description: A list of subjects
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subject'
+    post:
+      security:
+      - bearerAuth: []
+      operationId: createSubject
+      tags: [subjects]
+      description: Creates a new subject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Subject'
+      responses:
+        '200':
+          description: Returns the created subject
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subject'
+        '409':
+          description: Subject already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '400':
+          description: Subject request is invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+
+  /subjects/{subjectId}/readers:
+    get:
+      security:
+      - bearerAuth: []
+      operationId: listReaders
+      tags: [readers]
+      summary: Returns the list of readers
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          description: UUID of the subject
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: a list of known reader configurations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReaderReference'
+
+
+    post:
+      security:
+      - bearerAuth: []
+      operationId: upsertReaders
+      tags: [readers]
+      summary: registers a new reader for a Subject
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          description: UUID of the subject
+          schema:
+            type: string
+            format: uuid
+      description: Registers a new reader with a configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Reader'
+      responses:
+        '201':
+          description: Created a new reader for the subject
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReaderReference'
+        '400':
+          description: Reader request is invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+            
+
+  /subjects/{subjectId}/readers/{readerConfigurationId}/placement:
+    post:
+      security:
+      - bearerAuth: []
+      summary: Record a location where the subject places a configuration of a reader
+      operationId: upsertPlacement
+      tags: [readers]
+      parameters:
+        - $ref: '#/components/parameters/subjectId'
+        - name: readerConfigurationId
+          in: path
+          required: true
+          description: UUID of the subject
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Placement'
+      responses:
+        '201':
+          description: Placement record returned - prior matching values may be returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OID'
+        '400':
+          description: Placement request is invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Reader configuration ID not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+
+  /subjects/{subjectId}/sessions:
+    post:
+      security:
+      - bearerAuth: []
+      summary: Creates a new session for recording reader values
+      operationId: createSession
+      tags: [readers]
+      parameters:
+      - $ref: '#/components/parameters/subjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Session'
+      responses:
+        '201':
+          description: Created a new session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OID'
+        '400':
+          description: Session request is invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+
+  /subjects/{subjectId}/sessions/{sessionId}/glucoseRawReaderMeasurements:
+    post:
+      security:
+      - bearerAuth: []
+      description: createRawGlucoseMeasurements Persists 1 or more raw reader data along with the individual readings used to compute the result
+      operationId: createRawGlucoseMeasurements
+      tags: [measurements]
+      parameters:
+      - $ref: '#/components/parameters/subjectId'
+      - $ref: '#/components/parameters/sessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GlucoseRawReaderMeasurementRequest'
+                  minimum: 1
+                  maximum: 20
+      responses:
+        '201':
+          description: Created a measurement from the glucose reader
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OIDResults'
+        '400':
+          description: GlucoseReaderMeasurement request is invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: SessionID or PlacementID not associated with the subject
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /subjects/{subjectId}/oxygenReaderMeasurements:
+    get:
+      security:
+      - bearerAuth: []
+      summary: List a measurement obtained from the device, results are returned in chronilogical order
+      operationId: findOxygenMeasurements
+      tags: [measurements]
+      parameters:
+        - $ref: '#/components/parameters/subjectId'
+        - $ref: '#/components/parameters/offsetParam'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/startTimestamp'
+      responses:
+        '200':
+          description: Oxygen Measurements returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OxygenReaderMeasurementResults' 
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+
+
+  /subjects/{subjectId}/sessions/{sessionId}/oxygenReaderMeasurements:
+    post:
+      security:
+      - bearerAuth: []
+      description: createOxygenMeasurements Persists 1 or more oxygen reading from the reader along with the individual readings used to compute the result
+      operationId: createOxygenMeasurements
+      tags: [measurements]
+      parameters:
+      - $ref: '#/components/parameters/subjectId'
+      - $ref: '#/components/parameters/sessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/OxygenReaderMeasurementRequest'
+      responses:
+        '201':
+          description: Created a measurement from the oxygen reader
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OxygenReaderMeasurementResults'
+
+        '400':
+          description: OxygenReaderMeasurement request is invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: SessionID or PlacementID not associated with the subject
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /subjects/{subjectId}/measurements/{clientMeasurementId}:
+    post:
+      security:
+      - bearerAuth: []
+      description: Create or update a measurement obtained from the device
+      operationId: upsertMeasurement
+      tags: [measurements]
+      parameters:
+        - $ref: '#/components/parameters/subjectId'
+        - $ref: '#/components/parameters/clientMeasurementId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Measurement'
+      responses:
+        '201':
+          description: Created or updated a measurement from a non-reader source. If a duplicate client ID is provide the server will update the previous value
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OID'
+        '400':
+          description: Measurement was invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      security:
+      - bearerAuth: []
+      operationId: deleteMeasurement
+      tags: [measurements]
+      parameters:
+        - $ref: '#/components/parameters/subjectId'
+        - $ref: '#/components/parameters/clientMeasurementId'
+      summary: Deletes measurements previously provided by the client
+      responses:
+        '201':
+          description: Created a new measurement from a non-reader source. If a duplicate client ID is provide the server will update the previous value
+        '400':
+          description: Measurement was invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Measurement clientMeasurementId not found associated with subject
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /subjects/{subjectId}/annotations/{clientAnnotationId}:
+    post:
+      security:
+      - bearerAuth: []
+      summary: Create or update an annotation provided by the user
+      operationId: upsertAnnotation
+      tags: [annotations]
+      parameters:
+        - $ref: '#/components/parameters/subjectId'
+        - $ref: '#/components/parameters/clientAnnotationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Annotation'
+      responses:
+        '201':
+          description: Created or updated an annotation
+        '400':
+          description: Annotation was invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Annotation client ID not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      security:
+      - bearerAuth: []
+      summary: Deletes annotations previously provided by the client
+      operationId: deleteAnnotation
+      tags: [annotations]
+      parameters:
+        - $ref: '#/components/parameters/subjectId'
+        - $ref: '#/components/parameters/clientAnnotationId'
+      responses:
+        '201':
+          description: Created a new measurement from a non-reader source. If a duplicate client ID is provide the server will update the previous value
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OID'
+        '400':
+          description: Measurement was invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+
+  /subjects/{subjectId}/annotations:
+    get:
+      security:
+      - bearerAuth: []
+      summary: List a annotations obtained from the device, results are returned in chronilogical order
+      operationId: findAnnotations
+      tags: [annotations]
+      parameters:
+        - $ref: '#/components/parameters/subjectId'
+        - $ref: '#/components/parameters/offsetParam'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/startTimestamp'
+        - $ref: '#/components/parameters/endTimestamp'
+      responses:
+        '201':
+          description: An array of annotations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnnotationResults'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+
+
+  /subjects/{subjectId}/measurements:
+    get:
+      security:
+      - bearerAuth: []
+      summary: List a measurement obtained from the device, results are returned in chronilogical order
+      operationId: findMeasurements
+      tags: [measurements]
+      parameters:
+        - $ref: '#/components/parameters/subjectId'
+        - $ref: '#/components/parameters/offsetParam'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/unitCode'
+        - $ref: '#/components/parameters/startTimestamp'
+        - $ref: '#/components/parameters/endTimestamp'
+      responses:
+        '200':
+          description: Measurements returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeasurementResults' 
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      security:
+      - bearerAuth: []
+      description: Create or update a measurement obtained from the device
+      operationId: upsertMeasurements
+      parameters:
+        - $ref: '#/components/parameters/subjectId'
+      tags: [measurements]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MeasurementUpdate'
+      responses:
+        '201':
+          description: Created or updated a measurement from a non-reader source. If a duplicate client ID is provide the server will update the previous value
+        '400':
+          description: Measurement was invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /subjects/{subjectId}/measurement-summaries:
+    get:
+      security:
+      - bearerAuth: []
+      summary: List of summary measurements over a given time period
+      operationId: findSummaryMeasurements
+      tags: [measurements]
+      parameters:
+        - $ref: '#/components/parameters/subjectId'
+        - $ref: '#/components/parameters/offsetParam'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/period'
+        - $ref: '#/components/parameters/unitCode'
+        - $ref: '#/components/parameters/startTimestamp'
+        - $ref: '#/components/parameters/endTimestamp'
+      responses:
+        '201':
+          description: Measurement summaries returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeasurementSummaryResults'
+        '400':
+          description: Measurement summary request is invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+
+components:
+
+  securitySchemes:
+    bearerAuth:            # arbitrary name for the security scheme
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Subject:
+      description: the identifying ID that represents the subject on which data is captured
+      type: object
+      properties:
+        id:
+          description: ID is the unique id of the subject generated during registration and provided at login
+          type: string
+          format: uuid
+          example: bf6ccc04-017a-45cb-a081-7f5006ed9de2  
+        birthyear:
+          type: integer
+          example: 1991
+          minimum: 1900
+          description: The year the subject was born
+        sex:
+          type: string
+          enum:
+           - Male
+           - Female
+           - Other
+          example: Male
+          description: The sex of the associated subject
+        study-id:
+          type: string
+          example: "10102-12"
+          description: A identifier that associates the subject with a research study
+      required: [birthyear,sex]
+      
+
+    OxygenReaderMeasurement:
+      description: Oxygen Reader Measurement captures the raw measurement data from the Lumee Reader device
+      type: object
+      properties:
+        timestamp:
+          description: A UTC timestamp when the measurement was recorded by the device
+          type: string
+          format: date-time
+          example: '2019-09-16T15:28:09Z'
+        phone-timestamp:
+          description: A UTC timestamp when the measurement was recorded on the phone
+          type: string
+          format: date-time
+          example: '2019-09-16T15:28:09Z'          
+        battery-level:
+          type: integer
+          description: percentage of battery remaining
+          minimum: 0
+          maximum: 100
+          example: 98
+        loi:
+          description: the Lumee Oxygen Index
+          type: number
+          format: double
+          example: 15.3
+        decay-time:
+          type: integer
+          minimum: 0
+          example: 453
+        temperature: 
+          description: the temperature as read from the device
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+          example: 34.531
+        intensity: 
+          type: integer
+          description: The starting signal intensity in percent
+        brightness: 
+          type: integer
+          description: the brightness level of the LEDs exciting the sensor
+        baseline:
+          type: integer
+          description: The baseline signal intensity in percent
+        gain:
+          type: integer
+          description: Current amplifier gain (linear)
+        diagnostic:
+          description: diagnostic error values - zero means no error
+          example: 0
+          type: integer
+
+
+      
+          
+    OxygenReaderMeasurementRequest:
+      description: A collection of oxygen measurements associated with a specific placement and session
+      type: object
+      properties:
+        placementId:
+          type: string
+          format: uuid
+          description: the ID identifying where the reader was placed
+        measurements:
+          type: array
+          description: The set of measurements sampled at the place
+          items: 
+            $ref: '#/components/schemas/OxygenReaderMeasurement'
+            minimum: 1
+            maximum: 1000
+      required:
+        - placementId
+
+          
+    GlucoseRawReaderMeasurementRequest:
+      description: A collection of raw glucose measurements associated with a specific placement and session
+      type: object
+      properties:
+        placementId:
+          type: string
+          format: uuid
+          description: the ID identifying where the reader was placed
+        measurements:
+          type: array
+          description: The set of measurements sampled at the place
+          items: 
+            $ref: '#/components/schemas/GlucoseRawReaderMeasurement'
+            minimum: 1
+            maximum: 1000
+      required:
+        - placementId
+
+
+
+
+    OxygenMeasurementResult:
+      description: OxygenMeasurementResult includes all the measurement data as well as information about the reader
+      allOf:
+        - $ref: '#/components/schemas/OxygenReaderMeasurement'
+        - type: object
+          properties:
+            comment:
+              type: string
+            body-site-name:
+              type: string
+            hardware-version:
+              type: string
+            firmware-version:
+              type: string
+
+
+    OxygenReaderMeasurementResults:
+      description: OxygenReaderMeasurementResults provides a collection of OxygenReaderMeasurement used for paginated results
+      type: object
+      properties:
+        count:
+          type: integer
+          example: 14
+          description: Count is the total number of results in the result set
+        values:
+          type: array
+          items: 
+            $ref: '#/components/schemas/OxygenMeasurementResult' 
+      required: [count, values]
+
+
+    ReaderMeasurementResponse:
+      description: Confirmation set of measurements based on a request
+      type: object
+      properties:
+        placementId:
+          type: string
+          format: uuid
+          description: the ID identifying where the reader was placed
+        measurement-ids:
+          type: array
+          description: The set of measurements sampled at the place
+          items: 
+            type: string
+            format: uuid
+      required:
+        - placementId
+    
+    
+
+    GlucoseRawReaderMeasurement:
+      description: Glucose Reader Measurement captures the raw measurement data from the Lumee glucose device
+      type: object
+      properties:
+        timestamp:
+          description: A UTC timestamp when the measurement was recorded by the device
+          type: string
+          format: date-time
+          example: '2019-09-16T15:28:09Z'
+        phone-timestamp:
+          description: A UTC timestamp when the measurement was recorded on the phone
+          type: string
+          format: date-time
+          example: '2019-09-16T15:28:09Z' 
+        record_number:
+          type: integer
+          format: int64
+          description: a montonically increasing number per reader that is used to minimize and identify data loss
+        led_mode:
+          type: integer
+          description: describing the LED excition      
+        pcb-temperature:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 100.0
+          description: thermodynamic_temperature.degree_celsius
+          example: 37.8
+        skin-temperature:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 100.0
+          example: 37.7
+          description: thermodynamic_temperature.degree_celsius
+        ambient-temperature:
+          type: number
+          format: float
+          description: thermodynamic_temperature.degree_celsius
+          minimum: 0.0
+          maximum: 100.0
+          example: 37.4
+        led_current:
+          type: integer
+        sipm_ac_fft_sum:
+          type: integer
+        sipm_ac_max:
+          type: integer
+        sipm_dc_data:
+          type: integer
+        sipm_average_intensity:
+          type: integer
+        adc_pd_1:
+          type: integer
+          description: optical intensity of diffuse reflectence photo diode
+        adc_pd_2:
+          type: integer
+          description: optical intensity of diffuse reflectence photo diode
+        adc_pd_3:
+          type: integer
+          description: optical intensity of diffuse reflectence photo diode
+        adc_pd_4:
+          type: integer
+          description: optical intensity of diffuse reflectence photo diode
+        adc_pd_5:
+          type: integer
+          description: optical intensity of diffuse reflectence photo diode
+        adc_pd_6:
+          type: integer
+          description: optical intensity of diffuse reflectence photo diode
+        x_acceleration:
+          type: number
+          format: float
+        y_acceleration:
+          type: number
+          format: float
+        z_acceleration:
+          type: number
+          format: float
+      required: [timestamp, record_number, phone-timestamp, led_mode, pcb-temperature,skin-temperature,ambient-temperature,
+                led_current, sipm_ac_fft_sum, sipm_ac_max, sipm_dc_data, sipm_average_intensity,
+                adc_pd_1, adc_pd_2, adc_pd_3, adc_pd_4, adc_pd_5, adc_pd_6,
+                x_acceleration,y_acceleration,z_acceleration]
+
+    Measurement:
+      description: Measurements recorded from a arbitrary data source
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: The time the measurement was taken on the Subject
+          example: '2019-09-16T15:28:09Z'
+        recorded-timestamp:
+          description: device data may not be available to the mobile application in real time. this value represents the time the data was available to the mobile application
+          type: string
+          format: date-time
+          example: '2019-10-27T17:30:05Z'
+        clientID:
+          type: string
+          format: uuid
+          description: clientID provides a client generated UUID
+          example: e5be6bac-4cac-46f0-adf5-e0ed16b0698b
+        measure:
+          type: number
+          description: a numerical representation of the measurement
+          example: 124.21
+        unit-code:
+          $ref: '#/components/schemas/UnitCode'
+          nullable: false
+        source:
+          type: string
+          description: identifier indicating what device generated data measurement
+          example: 'abbot/libre/healthkit'
+      required: [timestamp, recorded-timestamp, measure, unit-code, source ]
+
+    MeasurementUpdate:
+      description: A batch update of measurements
+      type: object
+      properties:
+        upserts:
+          type: array
+          description: An array of measurements to delete in batch
+          items: 
+            $ref: '#/components/schemas/Measurement' 
+        deletes:
+          type: array
+          description: An array of client IDs associated with the measurements to delete
+          items:
+            type: string
+            format: uuid
+            example: bf6ccc04-017a-45cb-a081-7f5006ed9de2
+    MeasurementResults:
+      description: MeasurementResults provides a collection of Measurements used for paginated results
+      type: object
+      properties:
+        count:
+          type: integer
+          example: 14
+          description: Count is the total number of results in the result set
+        values:
+          type: array
+          items: 
+            $ref: '#/components/schemas/Measurement' 
+      required: [count, values]
+
+    MeasurementSummary:
+      description: Summarized time series measurements      
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: The beginning timestamp of the period
+        mean:
+          type: number
+          description: The mean of all the samples within the period
+          example: 102.1
+        max: 
+          type: number
+          description: The max of all the sample measurements within the period
+          example: 141.2
+        min: 
+          type: number
+          description: The minimum of all the sample measurements within the period
+          example: 78.2
+        sd: 
+          type: number
+          description: The standard deviation of all the sample measurements within the period  
+          example:           
+        q_25: 
+          type: number
+          description: The 25% quartile of all the sample measurements within the period
+          example: 88.2
+        q_50: 
+          type: number
+          description: The 50% quartile of all the sample measurements within the period
+          example: 101.1
+        q_75: 
+          type: number
+          description: The 75% quartile of all the sample measurements within the period
+          example: 135.2
+        count:
+          type: integer
+          description: The number of measurements that make up the summary
+          example: 450
+        below-threshhold-count:
+          type: integer
+          description: The count of individual measurements were below the lower threshhold
+          example: 0
+        above-threshold-count:
+          type: integer
+          description: The count of individual measurements were above the upper threshhold
+          example: 3
+      required: [timestamp, mean, max, min, count, sd, belowThreholdCount, belowThreshholdCount, aboveThresholdCount]
+    
+    MeasurementSummaryResults:
+      description: MeasurementSummaryResult provides a collection of MeasurementSummary used for paginated results
+      type: object
+      properties:
+        count:
+          type: integer
+          example: 14
+          description: Count is the total number of results in the result set
+        values:
+          type: array
+          items: 
+            $ref: '#/components/schemas/MeasurementSummary' 
+      required: [count, values]
+
+    OID:
+      description: OID is a stronglu typed ID value
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: ID is a resulting unique identifier for an object
+          example: bf6ccc04-017a-45cb-a081-7f5006ed9de2
+      required: [id]
+
+    OIDResults:
+      description: OIDResults is an array of object ID's
+      type: array
+      items:
+        $ref: '#/components/schemas/OID'
+      required: [count, values]
+
+    Session:
+      description: A period in which measurements were recorded from one or more readers.
+      type: object
+      properties:
+        start-local-timestamp:
+          type: string
+          format: date-time
+          example: '2019-09-16T15:28:09Z'
+          description: The local timezone of the client when the patch was applied
+        created-timestamp:
+          type: string
+          format: date-time
+          example: '2019-09-16T15:28:09Z'
+      required: [start-local-timestamp, created-timestamp]
+
+    Reader:
+      description: A recorded of a physical reader device
+      type: object
+      properties:
+        hardware-version:
+          type: string
+          example: v0.1.1
+          description: The hardware version number of the reader
+        serial-number:
+          type: string
+          example: 2020-123-123123-1233
+          description: The serial number or unique identifier of the reader
+        firmware-version:
+          type: string
+          example: FWv.0.0.1
+          description: The firmware version number of the reader
+        app-version:
+          type: string
+          example: v0.0.1(20)
+          pattern: '^v\d+\.?\d+\.?\d+\(\d+\)$'
+          description: The application version number including the marketing version and the 
+            build number in the form v{marketing-version}({buildNumber})
+        os-version:
+          type: string
+          example: iOS v13.1.4
+          description: The mobile os version number including the platform OS (eg. iOS, iPadOS) and operating system
+          pattern: '^\w+ v\d+\.?\d+\.?\d+$'
+        created-timestamp:
+          type: string
+          format: date-time
+          example: '2019-09-16T15:28:09Z'
+          description: The timestamp of when the reader was first connected to the mobile device
+      required: [hardware-version, app-version, os-version, firmware-version, serial-number, created-timestamp]
+
+    ReaderReference:
+      description: ReaderReference represents a hardware/software pairing of data
+      allOf:
+        - type: object
+          properties:
+            reader-id:
+              type: string
+              format: uuid
+              example: 988d7de7-6772-4b09-ae27-4c05534de9ba
+              description: A UUID of the reader provided by the server
+            reader-configuration-id:
+              type: string
+              format: uuid
+              example: 9ba6c437-effa-4bf9-bedb-4efd16e4d03d
+              description: A UUID for the configuration provided by the server
+          required: [reader-id, reader-configuration-id]
+        - $ref: '#/components/schemas/Reader'
+
+    Placement:
+      description: Placement represents the location a subject places the patch on the body
+      type: object
+      properties:
+        body-site:
+          $ref: '#/components/schemas/Place'
+          description: The location the subject placed the reader on their body
+        comment:
+          type: string
+          description: Optional textual common about the placement
+          example: below 3rd rib
+      required: [body-site]
+
+    Place:
+      description: Place identifies where a reader may be located
+      type: string
+      enum: [left-forearm, right-forearm,left-upper-arm,right-upper-arm,chest,abdomen,left-upper-leg,right-upper-leg,left-lower-back,right-lower-back,custom]
+
+    Annotation:
+      description: Annotation objects represent meta information on top of time series data
+      type: object
+      properties:
+        clientID:
+          type: string
+          format: uuid
+          description: client provided ID returned only in queries
+        timestamp:
+          type: string
+          format: date-time
+          description: The timestamp being annotated, eg. the time of the event
+          example: '2019-09-16T15:28:09Z'
+        end-timestamp:
+          type: string
+          format: date-time
+          description: Optional timestamp indicating the end time of an annotation
+          example: '2019-09-16T15:28:09Z'
+        annotation:
+          type: string
+          example: Vigorous exercise for 15 minutes
+        type:
+          $ref: '#/components/schemas/AnnotationType'
+        activity-intensity:
+          type: integer
+          minimum: 1
+          maximum: 7  
+        created-timestamp:
+          type: string
+          format: date-time
+          description: The time the annotation was created
+          example: '2019-09-16T15:28:09Z'
+      required: [timestamp, created-timestamp, type]
+
+    AnnotationType:
+      type: string
+      description: AnnotationType provides a categorization type for annotation 
+      enum: [activity-exercise,activity-sleep,activity-walk,activity-run,
+              activity-sit,buergers-test-start,buergers-test-leg-lift,buergers-test-sit,
+              buergers-test-recovery,buergers-test-end,symptom-muscle-ache,symptom-fatigue,
+              symptom-headache,symptom-fever,symptom-stuffy,symptom-ear-ache,symptom-runny-nose,
+              symptom-sore-throat,symptom-sneezing,symptom-cough,symptom-shortness-of-breath,
+              symptom-hoarseness,symptom-chest-discomfort,symptom-chills,symptom-diarrhea,
+              symptom-sick,symptom-redeyes,symptom-wheezy-chest,meal, medication, insulin, other, unspecified]
+
+    AnnotationResults:
+      description: AnnotationResults provide a sorted selection of results as part of a full paginated resultset
+      type: object
+      properties:
+          count: 
+            description: Count contains the total number of elements in the search result
+            type: integer
+            example: 12
+          values:
+            type: array
+            items: 
+              $ref: '#/components/schemas/Annotation'
+      required: [count, values]
+
+    AnnotationTimestamp:
+      description: AnnotationTimestamp provide body of API call of deleting timestamp
+      type: object
+      properties:
+          timestamp:
+            description: timestamp contains info of Deleted timestamp
+            type: string
+            format: date-time
+            example: "2017-01-01T10:15:20.000Z"
+      required: [timestamp]
+
+
+    ErrorResponse:
+      description: ErrorResponse enumerates the types of errors that are anticipated by the server
+      type: object
+      properties:
+        error-code:
+          $ref: '#/components/schemas/ErrorCode'
+        message:
+          type: string
+          example: Failed to parse Session object into valid JSON
+      required: [error-code, message]
+
+    ErrorCode:
+      description: ErrorCode enumerates the types of errors that are anticipated by the server
+      type: string
+      enum: 
+        - format
+        - missing
+        - exceeds
+        - out-of-range
+        - not-found
+        - access-denied
+
+    UnitCode:
+      type: string
+      enum: [glucose_mg_dl, weight_kg,blood_pressure_systolic, blood_pressure_diastolic,heart_rate_variability_ms,respiratory_rate_min,heart_rate_min, heart_rate_resting_min,height_cm,body_temperature_celcius,o2_saturation_percent, peripheral_perfusion_index, carbohydrates_grams,insulin_delivery_bolus_units, insulin_delivery_basil_units]
+      example: glucose_mg_dl
+      description: UnitCode indicating the type of measurement stored
+      nullable: false
+
+    CheckVersionError:
+      description: Result directs the client to update the software
+      properties:
+        action:
+          description: Check version action instructs the client of the options. may-update indicates that the user may update their client to a new version. must-update indicates that the client must be updated to continue to use the service.
+           Unsupported indicates that the operating system is not supported by the device.
+          type: string
+          enum:
+            - may-update
+            - must-update
+            - unsupported
+            - none
+        location:
+          type: string
+          example: itms-apps://itunes.apple.com/app/id1024941703
+          format: url
+          description: A URL to redirect the client to to obtain an up-to-date version of the application
+        message:
+          type: string
+          description: provided for debugging purposes only. This message may provide the developer information about the root cause of the lack of support
+          example: Newer version of client software is available
+      required:
+        - action
+
+  parameters:
+    offsetParam:
+      in: query
+      name: offset
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+      description: The number of items to skip before starting to collect the result set.
+    limitParam:
+      in: query
+      name: limit
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 50
+        default: 20
+      description: The numbers of items to return.
+    period:
+      in: query
+      name: period
+      required: true
+      schema:
+        type: string
+        enum: [15minute, hourly, daily, weekly, monthly]
+        default: 15minute
+      description: The sample period on which to summarize
+    unitCode:
+      in: query
+      name: unitCode
+      required: true
+      schema:
+        $ref: '#/components/schemas/UnitCode'
+      description: The sample period on which to summarize
+    subjectId:
+      name: subjectId
+      in: path
+      required: true
+      description: UUID of the subject provided by the server
+      schema:
+        type: string
+        format: uuid
+    sessionId:
+      name: sessionId
+      in: path
+      required: true
+      description: UUID of the session provided by the server
+      schema:
+        type: string
+        format: uuid
+    clientMeasurementId:
+      name: clientMeasurementId
+      in: path
+      required: true
+      description: The client generated unique identifier
+      schema:
+        type: string
+        format: uuid
+    clientAnnotationId:
+      name: clientAnnotationId
+      in: path
+      required: true
+      description: The client generated unique identifier for an annotation
+      schema:
+        type: string
+        format: uuid
+    startTimestamp:
+      in: query
+      name: start
+      required: true
+      schema:
+        type: string
+        format: date-time
+      description: The start time from which the search starts, not values before this will be returned
+    endTimestamp:
+      in: query
+      name: end
+      required: false
+      schema:
+        type: string
+        format: date-time
+      description: The end time from which the search shall not return any values equal to or greater than the provided value
+
+
+
+security:
+  - bearerAuth: []  
