@@ -104,7 +104,7 @@ paths:
           example: 10
           description: An build number of the software associated with the bundle
           schema:
-            type: integer
+            type: string
         - name: client_api
           in: path
           required: true
