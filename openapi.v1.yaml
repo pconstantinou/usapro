@@ -671,7 +671,6 @@ components:
           type: string
           example: "10102-12"
           description: A identifier that associates the subject with a research study
-      required: [birthyear,sex]
       
 
     OxygenReaderMeasurement:
