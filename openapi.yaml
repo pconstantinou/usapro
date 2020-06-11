@@ -49,12 +49,15 @@ paths:
                   version:
                     type: string
                     description: Version displays the git hash of the build
+                    example: 42b8c3f97f751889a2ee993c71d42cf3002c2587
                   branch:
                     type: string
                     description: Branch includes the branch from which the build was published
+                    example: test/check-version-tests
                   buildInfo:
                     type: object
                     description: BuildInfo provides Go's internal representation of the deployed software
+                    example: (devel)
   /apple-app-site-association:
     get:
       tags: [system]
@@ -111,12 +114,6 @@ paths:
             type: integer
       responses:
         '200':
-          description: Supported
-          content:
-            application/json:
-              schema:
-                type: object
-        '406':
           description: Client version is not supported, or partially supported. The user should be notified to update
           content:
             application/json:
@@ -1247,9 +1244,11 @@ components:
             - may-update
             - must-update
             - unsupported
+            - none
         location:
           type: string
           example: itms-apps://itunes.apple.com/app/id1024941703
+          format: url
           description: A URL to redirect the client to to obtain an up-to-date version of the application
         message:
           type: string
@@ -1257,7 +1256,6 @@ components:
           example: Newer version of client software is available
       required:
         - action
-        - location
 
   parameters:
     offsetParam:
