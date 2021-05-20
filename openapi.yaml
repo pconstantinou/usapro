@@ -2,7 +2,7 @@ openapi: 3.0.0
 info:
   title: Profusa Multi-Analyte Client API
   description: The server provides persistence for oxygen and glucose clients
-  version: 0.0.1
+  version: 0.0.2
   contact: 
     name: Phil Constantinou
     email: phil.constantinou@profusa.com
@@ -639,7 +639,6 @@ paths:
 
 
 components:
-
   securitySchemes:
     bearerAuth:            # arbitrary name for the security scheme
       type: http
@@ -758,12 +757,7 @@ components:
           format: uuid
           description: the ID identifying where the reader was placed
         measurements:
-          type: array
-          description: The set of measurements sampled at the place
-          items: 
-            $ref: '#/components/schemas/GlucoseRawReaderMeasurement'
-            minimum: 1
-            maximum: 1000
+          $ref: '#/components/schemas/GlucoseMeasurementBatch'
       required:
         - placementId
 
@@ -818,11 +812,27 @@ components:
       required:
         - placementId
     
-    
 
-    GlucoseRawReaderMeasurement:
-      description: Glucose Reader Measurement captures the raw measurement data from the Lumee glucose device
+    GlucoseMeasurementBatch:
       type: object
+      description: A collection of one or more raw glucose measurement samples
+      properties:
+        clientID:
+          type: string
+          format: uuid
+          description: clientID provides a client generated UUID
+          example: e5be6bac-4cac-46f0-adf5-e0ed16b0698b
+        samples:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/GlucoseMeasurementSample'
+      required: [samples]
+
+    GlucoseMeasurementSample:
+      type: object
+      description: A single sampling of the raw signals that compose a glucose meassurement
       properties:
         timestamp:
           description: A UTC timestamp when the measurement was recorded by the device
@@ -834,75 +844,234 @@ components:
           type: string
           format: date-time
           example: '2019-09-16T15:28:09Z' 
-        record_number:
+        created-timestamp:
+          description: A UTC timestamp when the measurement was recorded in the cloud
+          type: string
+          format: date-time
+          example: '2019-09-16T15:28:09Z' 
+        record-number:
           type: integer
           format: int64
-          description: a montonically increasing number per reader that is used to minimize and identify data loss
-        led_mode:
+          minimum: 0
+          description: A incrementing integer that identifies the sequence of measurements primarily
+                       used to prevent or identify data loss
+        diagnostic:
           type: integer
-          description: describing the LED excition      
-        pcb-temperature:
+          format: int16
+          minimum: 0
+          maximum: 255
+          description: a bit indicating an error in acquisition. 0 means no error
+        raw-led-measurements:
+          description: An array of measurements taken with LEDs illuminated
+          type: array
+          minItems: 16
+          maxItems: 16
+          items:
+            $ref: '#/components/schemas/GlucoseRawMeasurementAC'
+        raw-dark-measurement:
+          $ref: '#/components/schemas/GlucoseRawMeasurementACDC'
+        accelerometer:
+          $ref: '#/components/schemas/GlucoseAccelerometer'
+        temperature:
+          $ref: '#/components/schemas/GlucoseTemperature'
+      required: [timestamp, phone-timestamp, created-timestamp, record-number, diagnostic, raw-led-measurements,
+                 raw-dark-measurement,accelerometer,temperature]
+
+    GlucoseRawMeasurementAC:
+      properties:
+        type:
+          type: integer
+          description: The type of AC measurement which indicates which LEDs are illuminated in the cycle
+        led-current:
           type: number
           format: float
+          example: 99.9
+          description: LED Current in milliamps (mA)
+        pm-intensity:
+          type: number
+          description: Photomultiplier measurement in AC of intensity (mV)
+          format: double
+          example: 15.3
+          minimum: 0
+          maximum: 20000
+        pm-ac-max:
+          type: number
+          description: Maximum AC Signal for Dark Measurement (mV)
+          format: double
+          example: 15.3
+          minimum: 0
+          maximum: 20000
+        pm-dc-data:
+          type: number
+          description: Photomultiplier measurement in AC of intensity (mV)
+          format: double
+          example: 15.3
+          minimum: 0
+          maximum: 20000
+        pd-1-ac:
+          type: number
+          description: Photodiode measurement 1 in AC of intensity (mV)
+          format: double
+          example: 15.3
+          minimum: 0
+          maximum: 20000
+        pd-2-ac:
+          type: number
+          description: Photodiode measurement 2 in AC of intensity (mV)
+          format: double
+          example: 15.3
+          minimum: 0
+          maximum: 20000
+        pd-3-ac:
+          type: number
+          description: Photodiode measurement 3 in AC of intensity (mV)
+          format: double
+          example: 15.3
+          minimum: 0
+          maximum: 20000
+        pd-4-ac:
+          type: number
+          description: Photodiode measurement 4 in AC of intensity (mV)
+          format: double
+          example: 15.3
+          minimum: 0
+          maximum: 20000
+        pd-5-ac:
+          type: number
+          description: Photodiode measurement 5 in AC of intensity (mV)
+          format: double
+          example: 15.3
+          minimum: 0
+          maximum: 20000
+        pd-6-ac:
+          type: number
+          description: Photodiode measurement 6 in AC of intensity (mV)
+          format: double
+          example: 15.3
+          minimum: 0
+          maximum: 20000
+      required: [type, led-current, pm-intensity, pm-ac-max, pm-dc-data, pd-1-ac, pd-2-ac,
+                 pd-3-ac, pd-4-ac, pd-5-ac, pd-6-ac]       
+
+    GlucoseRawMeasurementACDC:
+      description: Raw measurement format 2 includes all fields from Raw measurement format 1 and PD1 – PD6 DC Level.
+      allOf:
+        - $ref: '#/components/schemas/GlucoseRawMeasurementAC'
+        - type: object
+          properties:
+            pd-1-dc:
+              type: number
+              description: Photodiode measurement 1 in DC of intensity (mV)
+              format: double
+              example: 15.3
+              minimum: 0
+              maximum: 20000
+            pd-2-dc:
+              type: number
+              description: Photodiode measurement 2 in DC of intensity (mV)
+              format: double
+              example: 15.3
+              minimum: 0
+              maximum: 20000
+            pd-3-dc:
+              type: number
+              description: Photodiode measurement 3 in DC of intensity (mV)
+              format: double
+              example: 15.3
+              minimum: 0
+              maximum: 20000
+            pd-4-dc:
+              type: number
+              description: Photodiode measurement 4 in DC of intensity (mV)
+              format: double
+              example: 15.3
+              minimum: 0
+              maximum: 20000
+            pd-5-dc:
+              type: number
+              description: Photodiode measurement 5 in DC of intensity (mV)
+              format: double
+              example: 15.3
+              minimum: 0
+              maximum: 20000
+            pd-6-dc:
+              type: number
+              description: Photodiode measurement 6 in DC of intensity (mV)
+              format: double
+              example: 15.3
+              minimum: 0
+              maximum: 20000
+      required: [pd-1-dc, pd-2-dc, pd-3-dc, pd-4-dc, pd-5-dc, pd-6-dc]
+
+
+    GlucoseAccelerometer:
+      description: Accelerometer format includes average X, Y, Z accelerations along with Max and Min Vector sum over 
+                   the entire measurement period.
+      type: object
+      properties:
+        x-axis-acceleration-average:
+          type: number
+          format: double
+          description: Average X-axis acceleration over entire measurement in g's
+          minimum: -15
+          maximum: 15
+          example: 0.02
+        y-axis-acceleration-average:
+          type: number
+          format: double
+          description: Average Y-axis acceleration over entire measurement in g's
+          minimum: -15
+          maximum: 15
+          example: 0.02
+        z-axis-acceleration-average:
+          type: number
+          format: double
+          description: Average Z-axis acceleration over entire measurement in g's
+          minimum: -15
+          maximum: 15
+          example: 0.02
+        max-acceleration-average:
+          type: number
+          format: double
+          description: Max RMS acceleration value over entire measurement.
+          minimum: -15
+          maximum: 15
+          example: 0.02
+        min-acceleration-average:
+          type: number
+          format: double
+          description: Min RMS acceleration value over entire measurement
+          minimum: -15
+          maximum: 15
+          example: 0.02
+      required: [x-axis-acceleration-average, y-axis-acceleration-average, z-axis-acceleration-average, max-acceleration-average]
+
+    GlucoseTemperature:
+      description: Temperatures measured by the reader
+      type: object
+      properties:
+        PCB-temperature:
+          type: number
+          format: double
           minimum: 0.0
           maximum: 100.0
-          description: thermodynamic_temperature.degree_celsius
+          description: Printed circuit board temperature used to hardware calibrate, thermodynamic_temperature.degree_celsius
           example: 37.8
         skin-temperature:
           type: number
-          format: float
+          format: double
           minimum: 0.0
           maximum: 100.0
-          example: 37.7
-          description: thermodynamic_temperature.degree_celsius
+          description: skin temperature, thermodynamic_temperature.degree_celsius
+          example: 37.8
         ambient-temperature:
           type: number
-          format: float
-          description: thermodynamic_temperature.degree_celsius
+          format: double
           minimum: 0.0
           maximum: 100.0
-          example: 37.4
-        led_current:
-          type: integer
-        sipm_ac_fft_sum:
-          type: integer
-        sipm_ac_max:
-          type: integer
-        sipm_dc_data:
-          type: integer
-        sipm_average_intensity:
-          type: integer
-        adc_pd_1:
-          type: integer
-          description: optical intensity of diffuse reflectence photo diode
-        adc_pd_2:
-          type: integer
-          description: optical intensity of diffuse reflectence photo diode
-        adc_pd_3:
-          type: integer
-          description: optical intensity of diffuse reflectence photo diode
-        adc_pd_4:
-          type: integer
-          description: optical intensity of diffuse reflectence photo diode
-        adc_pd_5:
-          type: integer
-          description: optical intensity of diffuse reflectence photo diode
-        adc_pd_6:
-          type: integer
-          description: optical intensity of diffuse reflectence photo diode
-        x_acceleration:
-          type: number
-          format: float
-        y_acceleration:
-          type: number
-          format: float
-        z_acceleration:
-          type: number
-          format: float
-      required: [timestamp, record_number, phone-timestamp, led_mode, pcb-temperature,skin-temperature,ambient-temperature,
-                led_current, sipm_ac_fft_sum, sipm_ac_max, sipm_dc_data, sipm_average_intensity,
-                adc_pd_1, adc_pd_2, adc_pd_3, adc_pd_4, adc_pd_5, adc_pd_6,
-                x_acceleration,y_acceleration,z_acceleration]
+          description: estimate of the ambient temperature (within the device) thermodynamic_temperature.degree_celsius
+          example: 37.8
+      required: [PCB-temperature, skin-temperature, ambient-temperature]
 
     Measurement:
       description: Measurements recorded from a arbitrary data source
@@ -1165,7 +1334,7 @@ components:
           format: date-time
           description: The time the annotation was created
           example: '2019-09-16T15:28:09Z'
-      required: [timestamp, created-timestamp, type, clientID]
+      required: [timestamp, created-timestamp, type]
 
     AnnotationType:
       type: string
@@ -1344,4 +1513,4 @@ components:
 
 
 security:
-  - bearerAuth: []  
+  - bearerAuth: []
