@@ -13,7 +13,7 @@ info:
 servers:
    - url: http://localhost:8080
      description: localtesting 
-   - url: https://pre-prod.profusa.com/
+   - url: https://pre-prod.profusa.com
      description: Amazon hosted pre-production web app server. This version has the most stable APIs
    - url: https://auth-test.profusa.com
      description: Amazon hosted web server test server
@@ -1513,4 +1513,4 @@ components:
 
 
 security:
-  - bearerAuth: []
+  - bearerAuth: []  
